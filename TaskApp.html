@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TaskApp AI</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icon.svg">
+    <style>
+        :root {
+            --primary: #007aff;
+            /* Apple Blue */
+            --bg: #000000;
+            --text: #f5f5f7;
+            --card-bg: #1c1c1e;
+            --border: #333;
+            --glass: rgba(28, 28, 30, 0.6);
+        }
+
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Inter', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+            height: 100vh;
+            height: 100dvh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        #particle-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+            opacity: 0.4;
+        }
+
+        #app-container {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            max-width: 600px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        /* --- TYPOGRAPHY & ANIMATION --- */
+        #main-title {
+            font-size: 5rem;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            background: linear-gradient(135deg, #fff 0%, #888 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            cursor: pointer;
+            transition: transform 1s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.5s ease;
+            position: relative;
+            z-index: 20;
+        }
+
+        #subtitle {
+            font-size: 1.5rem;
+            font-weight: 400;
+            color: #86868b;
+            margin-top: 10px;
+            transition: opacity 0.5s ease, transform 1s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        /* --- ACTIVE STATE (Apple Reveal) --- */
+        body.active #main-title {
+            transform: translateY(-35vh) scale(0.6);
+        }
+
+        body.active #subtitle {
+            opacity: 0;
+            transform: translateY(-35vh) scale(0.6);
+            pointer-events: none;
+        }
+
+        /* --- TASK INTERFACE --- */
+        #task-interface {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, 50px);
+            width: 90%;
+            max-width: 500px;
+            opacity: 0;
+            transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        body.active #task-interface {
+            opacity: 1;
+            transform: translate(-50%, -10%);
+            /* Center visually */
+            pointer-events: all;
+            transition-delay: 0.1s;
+        }
+
+        .input-group {
+            width: 100%;
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        input {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 18px 24px;
+            padding-right: 60px;
+            /* Space for the button */
+            border-radius: 20px;
+            color: white;
+            font-size: 16px;
+            outline: none;
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+            -webkit-appearance: none;
+        }
+
+        input:focus {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.3);
+            transform: scale(1.01);
+        }
+
+        /* --- CHATBOT UI --- */
+        #inline-bot-btn {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 20px;
+            cursor: pointer;
+            color: rgba(255, 255, 255, 0.7);
+            transition: all 0.2s ease;
+            z-index: 5;
+        }
+
+        #inline-bot-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            transform: translateY(-50%) scale(1.1);
+        }
+
+        .task-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-height: 50vh;
+            overflow-y: auto;
+            padding: 5px;
+            scrollbar-width: none;
+        }
+
+        .task-list::-webkit-scrollbar {
+            display: none;
+        }
+
+        .task-item {
+            background: var(--card-bg);
+            padding: 16px 20px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            transition: background 0.2s;
+        }
+
+        .task-item:hover {
+            background: #2c2c2e;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .chip {
+            font-size: 0.65rem;
+            padding: 4px 10px;
+            border-radius: 20px;
+            margin-right: 12px;
+            text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+        }
+
+        .chip.work {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+        }
+
+        .chip.personal {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34d399;
+        }
+
+        .chip.urgent {
+            background: rgba(239, 68, 68, 0.2);
+            color: #f87171;
+        }
+
+        /* --- CHATBOT UI (Centered Premium Modal) --- */
+        #chat-panel {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.9);
+            width: 90%;
+            max-width: 500px;
+            height: 70vh;
+            background: rgba(28, 28, 30, 0.85);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 32px;
+            display: flex;
+            flex-direction: column;
+            opacity: 0;
+            pointer-events: none;
+            box-shadow: 0 40px 100px rgba(0, 0, 0, 0.8);
+            z-index: 200;
+            transition: all 0.5s cubic-bezier(0.19, 1, 0.22, 1);
+            overflow: hidden;
+        }
+
+        #chat-panel.open {
+            transform: translate(-50%, -50%) scale(1);
+            opacity: 1;
+            pointer-events: all;
+        }
+
+        .chat-header {
+            padding: 20px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .chat-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            color: #fff;
+        }
+
+        .close-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            color: #fff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .close-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .chat-msgs {
+            flex: 1;
+            padding: 24px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            scrollbar-width: none;
+        }
+
+        .chat-msgs::-webkit-scrollbar {
+            display: none;
+        }
+
+        .msg {
+            padding: 12px 18px;
+            border-radius: 20px;
+            max-width: 85%;
+            line-height: 1.5;
+            font-size: 0.95rem;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .msg.bot {
+            background: rgba(255, 255, 255, 0.08);
+            align-self: flex-start;
+            color: #e5e5e7;
+            border-bottom-left-radius: 4px;
+        }
+
+        .msg.user {
+            background: var(--primary);
+            align-self: flex-end;
+            color: white;
+            border-bottom-right-radius: 4px;
+            box-shadow: 0 4px 15px rgba(0, 122, 255, 0.3);
+        }
+
+        /* Chat Input Area */
+        .chat-input-area {
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.2);
+            position: relative;
+        }
+
+        #chatInput {
+            width: 100%;
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 16px 20px;
+            border-radius: 18px;
+            outline: none;
+            font-size: 1rem;
+            transition: all 0.3s;
+            box-sizing: border-box;
+        }
+
+        #chatInput:focus {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        /* AI Init Panel Styling */
+        #ai-init-panel {
+            padding: 30px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+        }
+
+        #btn-load-ai {
+            margin-top: 20px;
+            padding: 14px 28px;
+            background: var(--primary);
+            border: none;
+            color: white;
+            border-radius: 30px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 8px 20px rgba(0, 122, 255, 0.3);
+        }
+
+        #btn-load-ai:hover {
+            transform: scale(1.05);
+            box-shadow: 0 12px 30px rgba(0, 122, 255, 0.4);
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="particle-canvas"></canvas>
+
+    <div id="app-container">
+        <div id="main-title" onclick="toggleApp()">TaskApp</div>
+        <div id="subtitle">Scorri o clicca per iniziare</div>
+
+        <div id="task-interface">
+            <div class="input-group">
+                <input type="text" id="taskInput" placeholder="Aggiungi attività..." onkeypress="handleInput(event)">
+                <div id="inline-bot-btn" onclick="toggleChat()">🤖</div>
+            </div>
+            <div class="task-list" id="taskList">
+                <!-- Tasks -->
+            </div>
+        </div>
+    </div>
+
+    <div id="chat-panel">
+        <!-- Header -->
+        <div class="chat-header">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <span class="chat-title">NeuroTask AI</span>
+                <span
+                    style="font-size:0.7rem; padding: 2px 8px; background:rgba(255,255,255,0.1); border-radius:10px; color:#aaa;"
+                    id="model-status">Offline</span>
+            </div>
+            <button class="close-btn" onclick="toggleChat()">✕</button>
+        </div>
+
+        <!-- Local AI Init Panel (Centered) -->
+        <div id="ai-init-panel">
+            <div style="font-size: 3rem; margin-bottom: 20px;">🧠</div>
+            <h3 style="margin:0 0 10px 0; font-weight:600;">Attiva l'Intelligenza Locale</h3>
+            <p style="font-size:0.9rem; color:#86868b; max-width: 80%; line-height: 1.5;">
+                L'IA gira interamente sul tuo dispositivo. Privacy totale, zero cloud.
+                <br>Richiede un download iniziale di ~1-2GB.
+            </p>
+            <button id="btn-load-ai" onclick="initLocalAI()">
+                Avvia Motore Neurale
+            </button>
+
+            <div id="progress-container" style="display:none; margin-top:20px; width: 80%;">
+                <div style="background:rgba(255,255,255,0.1); height:6px; border-radius:3px; overflow:hidden;">
+                    <div id="progress-bar"
+                        style="width:0%; height:100%; background:var(--primary); transition:width 0.2s;"></div>
+                </div>
+                <p id="progress-text" style="font-size:0.8rem; color:#888; margin-top:8px;">Inizializzazione...</p>
+            </div>
+        </div>
+
+        <!-- Messages Area (Hidden initially) -->
+        <div class="chat-msgs" id="chatMsgs" style="display:none;">
+            <div class="msg bot">Ciao! Sono pronta. Posso gestire le tue task o semplicemente chiacchierare.</div>
+        </div>
+
+        <!-- Input Area (Hidden initially) -->
+        <div class="chat-input-area" id="chatInputContainer" style="display:none;">
+            <input type="text" id="chatInput" placeholder="Chiedimi qualcosa..." onkeypress="handleChat(event)"
+                disabled>
+            <div id="loading-indicator" style="position:absolute; right:35px; top:35px; display:none;">
+                <div
+                    style="width: 20px; height: 20px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 1s linear infinite;">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+
+    <!-- WebLLM Import -->
+    <script type="module">
+        import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+        window.webllm = webllm;
+    </script>
+
+    <script>
+        // --- INTERACTION LOGIC (MORPHING) ---
+        let isActive = false;
+        let engine = null;
+        let isAiReady = false;
+
+        // Gestione Scroll (Rotella)
+        window.addEventListener('wheel', (e) => {
+            if (e.deltaY > 50 && !isActive) toggleApp(true);
+            else if (e.deltaY < -50 && isActive) toggleApp(false);
+        });
+
+        function toggleApp(forceState) {
+            if (forceState !== undefined) isActive = forceState;
+            else isActive = !isActive;
+            if (isActive) document.body.classList.add('active');
+            else document.body.classList.remove('active');
+        }
+
+        // --- BACKGROUND PARTICLES ---
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+        let mouse = { x: null, y: null };
+
+        window.addEventListener('resize', initCanvas);
+        window.addEventListener('mousemove', (e) => { mouse.x = e.x; mouse.y = e.y; });
+
+        class Particle {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.size = Math.random() * 2;
+                this.baseX = this.x;
+                this.baseY = this.y;
+                this.density = (Math.random() * 30) + 1;
+            }
+            draw() {
+                ctx.fillStyle = 'rgba(255,255,255,0.5)';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            update() {
+                let dx = mouse.x - this.x;
+                let dy = mouse.y - this.y;
+                let dist = Math.sqrt(dx * dx + dy * dy);
+                let maxDist = 150;
+                if (dist < maxDist) {
+                    const force = (maxDist - dist) / maxDist;
+                    const dirX = (dx / dist) * force * this.density;
+                    const dirY = (dy / dist) * force * this.density;
+                    this.x -= dirX * 5;
+                    this.y -= dirY * 5;
+                } else {
+                    if (this.x !== this.baseX) this.x -= (this.x - this.baseX) / 20;
+                    if (this.y !== this.baseY) this.y -= (this.y - this.baseY) / 20;
+                }
+                this.draw();
+            }
+        }
+
+        function initCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            particles = [];
+            for (let i = 0; i < 150; i++) particles.push(new Particle());
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => {
+                p.update();
+                particles.forEach(p2 => {
+                    let dx = p.x - p2.x;
+                    let dy = p.y - p2.y;
+                    let dist = Math.sqrt(dx * dx + dy * dy);
+                    if (dist < 100) {
+                        ctx.beginPath();
+                        ctx.strokeStyle = `rgba(255,255,255,${0.1 - dist / 1000})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.moveTo(p.x, p.y);
+                        ctx.lineTo(p2.x, p2.y);
+                        ctx.stroke();
+                    }
+                });
+            });
+            requestAnimationFrame(animate);
+        }
+        initCanvas();
+        animate();
+
+        // --- TASK LOGIC ---
+        let tasks = JSON.parse(localStorage.getItem('tasks_morph')) || [];
+
+        function handleInput(e) { if (e.key === 'Enter') { addTask(e.target.value); e.target.value = ''; } }
+
+        function addTask(text) {
+            if (!text.trim()) return;
+            let cat = 'personal';
+            if (text.toLowerCase().includes('lavoro')) cat = 'work';
+            if (text.toLowerCase().includes('urgente')) cat = 'urgent';
+            tasks.push({ id: Date.now(), text, cat, completed: false });
+            save(); render();
+        }
+
+        function save() { localStorage.setItem('tasks_morph', JSON.stringify(tasks)); }
+        function del(id) { tasks = tasks.filter(t => t.id !== id); save(); render(); }
+        function toggleComplete(id) {
+            const t = tasks.find(x => x.id === id);
+            if (t) { t.completed = !t.completed; save(); render(); }
+        }
+
+        function render() {
+            const list = document.getElementById('taskList');
+            list.innerHTML = '';
+            tasks.forEach(t => {
+                const div = document.createElement('div');
+                div.className = 'task-item';
+                const style = t.completed ? 'text-decoration: line-through; opacity: 0.5;' : '';
+
+                // Sanitize category
+                let safeCat = t.cat;
+                if (!['work', 'personal', 'urgent'].includes(safeCat)) safeCat = 'personal';
+
+                div.innerHTML = `
+                    <div style="display:flex; align-items:center; ${style}">
+                        <span class="chip ${safeCat}">${safeCat}</span>
+                        <span>${t.text}</span>
+                    </div>
+                    <div>
+                        <button onclick="toggleComplete(${t.id})" style="background:none; border:none; cursor:pointer; margin-right:5px;">${t.completed ? '✅' : '⬜'}</button>
+                        <button onclick="del(${t.id})" style="background:none; border:none; color:#666; cursor:pointer;">✕</button>
+                    </div>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        render();
+
+        // --- CHATBOT & LOCAL AI LOGIC ---
+        function toggleChat() { document.getElementById('chat-panel').classList.toggle('open'); }
+
+        async function initLocalAI() {
+            if (!window.webllm) { alert("Errore caricamento libreria WebLLM."); return; }
+
+            const btn = document.getElementById('btn-load-ai');
+            const progContainer = document.getElementById('progress-container');
+            const progBar = document.getElementById('progress-bar');
+            const progText = document.getElementById('progress-text');
+            const status = document.getElementById('model-status');
+
+            btn.style.display = 'none';
+            progContainer.style.display = 'block';
+            status.textContent = "Avvio...";
+
+            try {
+                const selectedModel = "Llama-3.2-1B-Instruct-q4f32_1-MLC";
+
+                engine = new window.webllm.MLCEngine();
+
+                engine.setInitProgressCallback((report) => {
+                    const p = Math.round(report.progress * 100);
+                    progBar.style.width = p + '%';
+                    progText.textContent = report.text;
+                });
+
+                await engine.reload(selectedModel);
+
+                isAiReady = true;
+                status.textContent = "Online 🟢";
+                status.style.color = "#34d399";
+                progContainer.style.display = 'none';
+                document.getElementById('ai-init-panel').style.display = 'none';
+                document.getElementById('chatMsgs').style.display = 'flex';
+                document.getElementById('chatInputContainer').style.display = 'block';
+                document.getElementById('chatInput').disabled = false;
+                document.getElementById('chatInput').focus();
+
+            } catch (err) {
+                console.error(err);
+                status.textContent = "Error 🔴";
+                progText.textContent = "Errore: " + err.message;
+                btn.style.display = 'block';
+            }
+        }
+
+        function handleChat(e) {
+            if (e.key === 'Enter') {
+                const txt = e.target.value;
+                if (!txt.trim()) return;
+                addMsg(txt, 'user');
+                e.target.value = '';
+
+                if (isAiReady) {
+                    callLocalAI(txt);
+                } else {
+                    addMsg("L'AI non è ancora pronta. Clicca su Scarica.", 'bot');
+                }
+            }
+        }
+
+        function addMsg(txt, type) {
+            const div = document.createElement('div');
+            div.className = `msg ${type}`;
+            div.textContent = txt;
+            document.getElementById('chatMsgs').appendChild(div);
+            const container = document.getElementById('chatMsgs');
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function callLocalAI(userPrompt) {
+            const loading = document.getElementById('loading-indicator');
+            loading.style.display = 'block';
+
+            const tasksContext = tasks.map(t => `- [ID:${t.id}] ${t.text} (${t.completed ? 'FATTO' : 'DA FARE'}, cat:${t.cat})`).join('\n');
+
+            const systemPrompt = `
+You are a helpful assistant for a To-Do App.
+Current tasks:
+${tasksContext}
+
+User input: "${userPrompt}"
+
+Identify the user's intent and return a JSON object.
+IMPORTANT: The 'reply' field MUST be in the SAME LANGUAGE as the User input.
+Actions: "ADD", "DEL" (delete), "DONE" (complete), "NONE".
+Categories: "work", "personal", "urgent".
+
+RULES for "ADD":
+- "text" must be a CONCISE summary (max 4-5 words).
+- Example: User "Devo ricordarmi di chiamare Marco per il progetto" -> Text "Chiamare Marco".
+- Example: User "Domani devo assolutamente fare la spesa" -> Text "Fare la spesa".
+
+Format:
+{
+  "reply": "Short conversational reply in the USER'S LANGUAGE",
+  "actions": [
+    { "type": "ADD", "text": "Concise task summary", "cat": "personal" },
+    { "type": "DEL", "id": 12345 },
+    { "type": "DONE", "id": 12345 }
+  ]
+}
+ONLY JSON. NO MARKDOWN.
+`;
+
+            try {
+                const messages = [
+                    { role: "system", content: "You are a helpful JSON-speaking assistant. You ALWAYS reply in the same language as the user." },
+                    { role: "user", content: systemPrompt }
+                ];
+
+                const reply = await engine.chat.completions.create({
+                    messages,
+                    temperature: 0.1,
+                    response_format: { type: "json_object" }
+                });
+
+                loading.style.display = 'none';
+                const rawText = reply.choices[0].message.content;
+                console.log("AI Raw:", rawText);
+
+                const jsonStr = rawText.replace(/```json|```/g, '').trim();
+                let result;
+                try {
+                    result = JSON.parse(jsonStr);
+                } catch (e) {
+                    console.error("JSON Parse Error", e);
+                    addMsg("L'AI ha risposto in modo confuso. Riprova.", 'bot');
+                    return;
+                }
+
+                if (result.actions) {
+                    result.actions.forEach(act => {
+                        if (act.type === 'ADD') {
+                            let finalCat = 'personal';
+                            if (act.cat && ['work', 'personal', 'urgent'].includes(act.cat.toLowerCase())) {
+                                finalCat = act.cat.toLowerCase();
+                            }
+                            tasks.push({ id: Date.now() + Math.random(), text: act.text, cat: finalCat, completed: false });
+                        } else if (act.type === 'DEL') {
+                            tasks = tasks.filter(t => t.id !== act.id);
+                        } else if (act.type === 'DONE') {
+                            const t = tasks.find(x => x.id === act.id);
+                            if (t) t.completed = true;
+                        }
+                    });
+                    save();
+                    render();
+                }
+
+                addMsg(result.reply, 'bot');
+
+            } catch (err) {
+                loading.style.display = 'none';
+                console.error(err);
+                addMsg("Errore AI Locale: " + err.message, 'bot');
+            }
+        }
+    </script>
+</body>
+
+</html>
